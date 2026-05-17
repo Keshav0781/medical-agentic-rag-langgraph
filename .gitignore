@@ -1,0 +1,37 @@
+# Environment variables - NEVER commit real keys
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+*.pyc
+
+# Virtual environment
+venv/
+.venv/
+env/
+
+# Data - PDFs and processed files stay local
+data/raw_docs/
+data/processed/
+
+# Logs
+logs/
+
+# Qdrant local storage
+qdrant_storage/
+
+# VS Code
+.vscode/
+
+# Mac
+.DS_Store
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# LangSmith - never commit trace data
+.langsmith/
