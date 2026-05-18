@@ -36,6 +36,16 @@ os.environ["LANGCHAIN_TRACING_V2"] = LANGCHAIN_TRACING_V2
 os.environ["LANGCHAIN_API_KEY"] = LANGSMITH_API_KEY or ""
 os.environ["LANGCHAIN_PROJECT"] = LANGSMITH_PROJECT
 
+# Logging
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+
+# Embedding Model
+EMBEDDING_MODEL = os.getenv(
+    "EMBEDDING_MODEL",
+    "sentence-transformers/all-mpnet-base-v2"
+)
+EMBEDDING_DIMENSION = 768
+
 def validate_config():
     """
     Validates critical environment variables at startup.
