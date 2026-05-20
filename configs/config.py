@@ -23,8 +23,8 @@ PROCESSED_PATH = "data/processed"
 # Retrieval Configuration
 TOP_K_RETRIEVAL = int(os.getenv("TOP_K_RETRIEVAL", 20))
 TOP_K_RERANK = int(os.getenv("TOP_K_RERANK", 5))
-RERANKER_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
-RETRIEVAL_SCORE_THRESHOLD = 0.30
+RERANKER_MODEL = "cross-encoder/ms-marco-MiniLM-L-12-v2"
+RETRIEVAL_SCORE_THRESHOLD = 3.0
 
 # LangSmith Tracing
 LANGSMITH_API_KEY = os.getenv("LANGSMITH_API_KEY")
