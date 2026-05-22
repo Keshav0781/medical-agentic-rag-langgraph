@@ -328,3 +328,415 @@ Current query: {query}
                     "rewritten_query": query,
                     "error": "LLM_UNAVAILABLE"
                 }
+
+# ── Node 4: Retrieval ────────────────────────────────────────────────────────
+def retrieval_node(state: AgentState) -> dict:
+    """
+    Embeds rewritten query and searches Qdrant for top 20 chunks.
+    Uses rewritten_query if available, falls back to original query.
+    At Siemens Azure OpenAI embeddings used instead of local model.
+    """
+    query = state.get("rewritten_query") or state["query"]
+
+    try:
+        query_vector = embedding_model.encode(query).tolist()
+        chunks = search(query_vector, top_k=20)
+
+        logger.info(f"Retrieved {len(chunks)} chunks for query")
+        return {"chunks": chunks}
+
+    except Exception as e:
+        logger.error(f"Retrieval failed: {e}")
+        return {"chunks": [], "error": str(e)}
+
+
+# ── Node 5: Retrieval Validation ─────────────────────────────────────────────
+def retrieval_validation_node(state: AgentState) -> dict:
+    """
+    Checks if retrieved chunks are relevant enough to proceed.
+    If poor results — triggers query rewriting and retry.
+    Maximum 2 retries before returning fallback response.
+    At Siemens this prevented wasted GPT-4o calls on poor retrieval.
+    """
+    chunks = state.get("chunks", [])
+    retry_count = state.get("retry_count", 0)
+
+    # No chunks retrieved at all
+    if not chunks:
+        logger.warning("No chunks retrieved")
+        if retry_count < 2:
+            return {"retry_count": retry_count + 1}
+        else:
+            return {
+                "answer": FALLBACK_MESSAGE,
+                "follow_ups": [],
+                "error": "NO_CHUNKS"
+            }
+
+    # Check top chunk score
+    top_score = chunks[0].get("score", 0)
+
+    if top_score >= 0.5:
+        logger.info(
+            f"Retrieval validation passed — "
+            f"top score: {top_score:.4f}"
+        )
+        return {"error": ""}
+
+    else:
+        logger.warning(
+            f"Poor retrieval — top score: {top_score:.4f}, "
+            f"retry {retry_count + 1}/2"
+        )
+        if retry_count < 2:
+            return {
+                "retry_count": retry_count + 1,
+                "rewritten_query": "",  # force query rewrite on retry
+                "chunks": []
+            }
+        else:
+            return {
+                "answer": FALLBACK_MESSAGE,
+                "follow_ups": [],
+                "error": "POOR_RETRIEVAL"
+            }
+
+# ── Node 6: Reranking ────────────────────────────────────────────────────────
+def reranking_node(state: AgentState) -> dict:
+    """
+    Reranks top 20 retrieved chunks using CrossEncoder.
+    Keeps top 5 above relevance threshold.
+    At Siemens same CrossEncoder pattern — two-stage retrieval
+    confirmed to improve answer quality significantly.
+    """
+    query = state.get("rewritten_query") or state["query"]
+    chunks = state.get("chunks", [])
+
+    if not chunks:
+        logger.warning("No chunks to rerank")
+        return {"reranked_chunks": []}
+
+    reranked = rerank_chunks(query, chunks)
+
+    logger.info(f"Reranking complete — kept {len(reranked)} chunks")
+    return {"reranked_chunks": reranked}
+
+
+# ── Node 7: Generation ───────────────────────────────────────────────────────
+def generation_node(state: AgentState) -> dict:
+    """
+    Generates answer from reranked chunks using Groq Llama-3.
+    Includes conversation history for multi-turn context.
+    Also checks faithfulness and generates follow-up questions
+    in same LLM call to reduce API calls.
+    At Siemens GPT-4o used here — most critical node,
+    highest quality model applied.
+    """
+    query = state["query"]
+    reranked_chunks = state.get("reranked_chunks", [])
+    conversation_history = state.get("conversation_history", [])
+
+    if not reranked_chunks:
+        return {
+            "answer": FALLBACK_MESSAGE,
+            "follow_ups": []
+        }
+
+    # Build context from reranked chunks
+    context = ""
+    sources = []
+    for i, chunk in enumerate(reranked_chunks):
+        context += f"\n[Source {i+1}]: {chunk['text']}\n"
+        sources.append(
+            f"{chunk['source']} (Page {chunk['page_number']})"
+        )
+
+    # Build conversation history context
+    history_text = ""
+    if conversation_history:
+        history_text = "\nPrevious conversation:\n"
+        for exchange in conversation_history[-3:]:
+            history_text += f"Q: {exchange.get('query', '')}\n"
+            history_text += f"A: {exchange.get('answer', '')[:200]}\n"
+
+    messages = [
+        SystemMessage(content=f"""
+You are an expert AI assistant for Siemens Healthineers R&D documents.
+
+Answer the question based ONLY on the provided context.
+If the answer is not in the context, say so honestly.
+Never fabricate information.
+Always cite which source your answer comes from.
+
+After your answer, on a new line write:
+SOURCES: [list the source numbers you used]
+
+Then generate exactly 3 follow-up questions the user might ask next.
+Write them as:
+FOLLOWUP1: <question>
+FOLLOWUP2: <question>
+FOLLOWUP3: <question>
+        """),
+        HumanMessage(content=f"""
+{history_text}
+
+Context:
+{context}
+
+Question: {query}
+        """)
+    ]
+
+    for attempt in range(3):
+        try:
+            response = llm.invoke(messages)
+            content = response.content.strip()
+
+            # Parse answer and follow-ups
+            answer = content
+            follow_ups = []
+            source_refs = []
+
+            lines = content.split("\n")
+            answer_lines = []
+
+            for line in lines:
+                if line.startswith("FOLLOWUP1:"):
+                    follow_ups.append(
+                        line.replace("FOLLOWUP1:", "").strip()
+                    )
+                elif line.startswith("FOLLOWUP2:"):
+                    follow_ups.append(
+                        line.replace("FOLLOWUP2:", "").strip()
+                    )
+                elif line.startswith("FOLLOWUP3:"):
+                    follow_ups.append(
+                        line.replace("FOLLOWUP3:", "").strip()
+                    )
+                elif line.startswith("SOURCES:"):
+                    source_refs.append(
+                        line.replace("SOURCES:", "").strip()
+                    )
+                else:
+                    answer_lines.append(line)
+
+            answer = "\n".join(answer_lines).strip()
+
+            # Add source citations to answer
+            if sources:
+                answer += f"\n\nSources: {', '.join(sources)}"
+
+            logger.info(
+                f"Answer generated — "
+                f"{len(follow_ups)} follow-ups created"
+            )
+
+            return {
+                "answer": answer,
+                "follow_ups": follow_ups
+            }
+
+        except Exception as e:
+            if attempt < 2:
+                logger.warning(
+                    f"Generation attempt {attempt + 1} failed: {e} "
+                    f"— retrying in 2 seconds"
+                )
+                time.sleep(2)
+            else:
+                logger.error(
+                    f"Generation failed after 3 attempts: {e}"
+                )
+                return {
+                    "answer": MAINTENANCE_MESSAGE,
+                    "follow_ups": []
+                }
+
+
+# ── Node 8: Output Guardrail ─────────────────────────────────────────────────
+def output_guardrail_node(state: AgentState) -> dict:
+    """
+    Validates generated answer before returning to user.
+    Checks faithfulness to source documents.
+    At Siemens this prevented hallucinated R&D data
+    from reaching researchers making critical decisions.
+    Fail open if LLM unavailable — returns answer without check.
+    """
+    answer = state.get("answer", "")
+    reranked_chunks = state.get("reranked_chunks", [])
+
+    if not answer or not reranked_chunks:
+        return {"answer": answer}
+
+    context = " ".join([
+        chunk["text"] for chunk in reranked_chunks
+    ])[:2000]
+
+    messages = [
+        SystemMessage(content="""
+You are a faithfulness checker for an R&D document search system.
+Check if the answer is grounded in the provided context.
+The answer should only contain information present in the context.
+Respond with ONLY: FAITHFUL or UNFAITHFUL
+        """),
+        HumanMessage(content=f"""
+Context: {context}
+
+Answer: {answer}
+        """)
+    ]
+
+    for attempt in range(3):
+        try:
+            response = llm.invoke(messages)
+            result = response.content.strip().upper()
+
+            if "UNFAITHFUL" in result:
+                logger.warning(
+                    "Output guardrail: answer flagged as unfaithful"
+                )
+                return {
+                    "answer": FALLBACK_MESSAGE,
+                    "follow_ups": []
+                }
+            else:
+                logger.info("Output guardrail: answer is faithful")
+                return {"answer": answer}
+
+        except Exception as e:
+            if attempt < 2:
+                time.sleep(2)
+            else:
+                logger.warning(
+                    f"Output guardrail unavailable: {e} — "
+                    f"returning answer without check"
+                )
+                return {"answer": answer}
+
+
+# ── Node 9: Update Conversation History ──────────────────────────────────────
+def update_history_node(state: AgentState) -> dict:
+    """
+    Updates conversation history with current exchange.
+    Keeps last 5 exchanges for memory efficiency.
+    At Siemens conversation history stored in Redis
+    for persistence across sessions.
+    Here stored in state — resets each session.
+    """
+    history = state.get("conversation_history", [])
+
+    new_exchange = {
+        "query": state["query"],
+        "answer": state.get("answer", "")[:300]
+    }
+
+    history.append(new_exchange)
+
+    if len(history) > 5:
+        history = history[-5:]
+
+    logger.info(
+        f"Conversation history updated — {len(history)} exchanges"
+    )
+
+    return {"conversation_history": history}
+
+
+# ── Conditional Edge Functions ───────────────────────────────────────────────
+def should_continue_after_guardrail(state: AgentState) -> str:
+    """Route after input guardrail."""
+    if state.get("is_safe"):
+        return "router"
+    return END
+
+def should_continue_after_router(state: AgentState) -> str:
+    """Route after router — RAG or Summary path."""
+    if state.get("route") == "summary":
+        return "query_understanding"  # summary uses same understanding node
+    return "query_understanding"
+
+def should_continue_after_validation(state: AgentState) -> str:
+    """Route after retrieval validation — continue or retry."""
+    error = state.get("error", "")
+    retry_count = state.get("retry_count", 0)
+
+    if error in ["NO_CHUNKS", "POOR_RETRIEVAL"]:
+        if retry_count < 2:
+            return "query_understanding"  # retry with fresh rewrite
+        else:
+            return END  # fallback answer already set
+    return "reranking"
+
+
+# ── Build Graph ──────────────────────────────────────────────────────────────
+def build_rag_graph():
+    """
+    Builds and compiles the LangGraph RAG pipeline.
+    Connects all nodes with edges and conditional routing.
+    At Siemens same graph pattern — StateGraph with
+    conditional edges for retry logic and guardrail routing.
+    """
+    graph = StateGraph(AgentState)
+
+    # Add all nodes
+    graph.add_node("input_guardrail", input_guardrail_node)
+    graph.add_node("router", router_node)
+    graph.add_node("query_understanding", query_understanding_node)
+    graph.add_node("retrieval", retrieval_node)
+    graph.add_node("retrieval_validation", retrieval_validation_node)
+    graph.add_node("reranking", reranking_node)
+    graph.add_node("generation", generation_node)
+    graph.add_node("output_guardrail", output_guardrail_node)
+    graph.add_node("update_history", update_history_node)
+
+    # Entry point
+    graph.add_edge(START, "input_guardrail")
+
+    # Conditional edge after guardrail
+    graph.add_conditional_edges(
+        "input_guardrail",
+        should_continue_after_guardrail,
+        {"router": "router", END: END}
+    )
+
+    # After router — always goes to query understanding
+    graph.add_edge("router", "query_understanding")
+
+    # After query understanding — always retrieves
+    graph.add_edge("query_understanding", "retrieval")
+
+    # After retrieval — always validates
+    graph.add_edge("retrieval", "retrieval_validation")
+
+    # Conditional edge after validation
+    graph.add_conditional_edges(
+        "retrieval_validation",
+        should_continue_after_validation,
+        {
+            "query_understanding": "query_understanding",
+            "reranking": "reranking",
+            END: END
+        }
+    )
+
+    # After reranking — always generates
+    graph.add_edge("reranking", "generation")
+
+    # After generation — output guardrail
+    graph.add_edge("generation", "output_guardrail")
+
+    # After output guardrail — update history
+    graph.add_edge("output_guardrail", "update_history")
+
+    # Final edge to END
+    graph.add_edge("update_history", END)
+
+    # Compile
+    compiled = graph.compile()
+    logger.info("RAG graph compiled successfully")
+
+    return compiled
+
+
+# ── Initialize graph ─────────────────────────────────────────────────────────
+rag_graph = build_rag_graph()
