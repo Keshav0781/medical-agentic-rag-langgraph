@@ -1,11 +1,24 @@
 import logging
 from qdrant_client import QdrantClient
-from configs.config import QDRANT_URL, QDRANT_API_KEY, QDRANT_COLLECTION_NAME, EMBEDDING_DIMENSION, LOG_LEVEL
-from qdrant_client.models import VectorParams, Distance, PointStruct
+from configs.config import (
+    QDRANT_URL,
+    QDRANT_API_KEY,
+    QDRANT_COLLECTION_NAME,
+    EMBEDDING_DIMENSION,
+    LOG_LEVEL
+)
+from qdrant_client.models import (
+    VectorParams,
+    Distance,
+    PointStruct,
+    Filter,
+    FieldCondition,
+    MatchValue,
+    PayloadSchemaType
+)
 
 logging.basicConfig(level=getattr(logging, LOG_LEVEL))
 logger = logging.getLogger(__name__)
-
 
 qdrant_client = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
 
@@ -14,6 +27,7 @@ def create_collection():
     """
     Creates Qdrant collection if it doesn't already exist.
     Collection stores 768-dim vectors with cosine similarity.
+    At Siemens collection was pre-created by infrastructure team.
     """
     collections = qdrant_client.get_collections().collections
     collection_names = [c.name for c in collections]
@@ -30,6 +44,24 @@ def create_collection():
         )
     )
     logger.info(f"Created collection '{QDRANT_COLLECTION_NAME}'")
+
+
+def create_payload_index():
+    """
+    Creates payload index on 'source' field for metadata filtering.
+    Required for summariser to fetch chunks by document name.
+    At Siemens payload indexes were created during collection setup
+    by infrastructure team — engineers never did this manually.
+    """
+    try:
+        qdrant_client.create_payload_index(
+            collection_name=QDRANT_COLLECTION_NAME,
+            field_name="source",
+            field_schema=PayloadSchemaType.KEYWORD
+        )
+        logger.info("Payload index created on 'source' field")
+    except Exception as e:
+        logger.warning(f"Payload index creation: {e}")
 
 
 def store_chunks(chunks: list, batch_size: int = 100):
@@ -83,7 +115,8 @@ def store_chunks(chunks: list, batch_size: int = 100):
             raise
 
     logger.info(
-        f"Stored {len(points)} chunks in {successful_batches} batches successfully"
+        f"Stored {len(points)} chunks in "
+        f"{successful_batches} batches successfully"
     )
 
 
@@ -92,11 +125,11 @@ def search(query_vector: list, top_k: int) -> list:
     Searches Qdrant for most similar chunks to query vector.
     Returns top_k most similar chunks with scores and metadata.
     """
-    results = qdrant_client.search(
+    results = qdrant_client.query_points(
         collection_name=QDRANT_COLLECTION_NAME,
-        query_vector=query_vector,
+        query=query_vector,
         limit=top_k
-    )
+    ).points
 
     chunks = []
     for result in results:

@@ -1,4 +1,5 @@
 import logging
+from src.agents.summariser import summarise_document_node
 import time
 from typing import TypedDict
 from langgraph.graph import StateGraph, END, START
@@ -652,7 +653,7 @@ def should_continue_after_guardrail(state: AgentState) -> str:
 def should_continue_after_router(state: AgentState) -> str:
     """Route after router — RAG or Summary path."""
     if state.get("route") == "summary":
-        return "query_understanding"  # summary uses same understanding node
+        return "summariser"  # routes to document summarisation node
     return "query_understanding"
 
 def should_continue_after_validation(state: AgentState) -> str:
@@ -688,6 +689,7 @@ def build_rag_graph():
     graph.add_node("generation", generation_node)
     graph.add_node("output_guardrail", output_guardrail_node)
     graph.add_node("update_history", update_history_node)
+    graph.add_node("summariser", summarise_document_node)
 
     # Entry point
     graph.add_edge(START, "input_guardrail")
@@ -699,13 +701,21 @@ def build_rag_graph():
         {"router": "router", END: END}
     )
 
-    # After router — always goes to query understanding
-    graph.add_edge("router", "query_understanding")
+    # Conditional edge after router — RAG or Summary
+    graph.add_conditional_edges(
+        "router",
+        should_continue_after_router,
+        {
+            "query_understanding": "query_understanding",
+            "summariser": "summariser"
+        }
+    )
 
-    # After query understanding — always retrieves
+    # Summary path — goes directly to update_history
+    graph.add_edge("summariser", "update_history")
+
+    # RAG path
     graph.add_edge("query_understanding", "retrieval")
-
-    # After retrieval — always validates
     graph.add_edge("retrieval", "retrieval_validation")
 
     # Conditional edge after validation
@@ -719,13 +729,8 @@ def build_rag_graph():
         }
     )
 
-    # After reranking — always generates
     graph.add_edge("reranking", "generation")
-
-    # After generation — output guardrail
     graph.add_edge("generation", "output_guardrail")
-
-    # After output guardrail — update history
     graph.add_edge("output_guardrail", "update_history")
 
     # Final edge to END
