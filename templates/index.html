@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Medical R&D Intelligence</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Serif+Display&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+    <!-- ── LEFT SIDEBAR ─────────────────────────────────────── -->
+    <aside class="sidebar">
+
+        <!-- Logo -->
+        <div class="sidebar-logo">
+            <div class="logo-icon">MR</div>
+            <div class="logo-text">
+                <span class="logo-title">Medical R&D</span>
+                <span class="logo-sub">Intelligence</span>
+            </div>
+        </div>
+
+        <!-- Mode Toggle -->
+        <div class="mode-toggle">
+            <button class="mode-btn active" id="btn-search" onclick="setMode('search')">
+                <span class="mode-icon">🔍</span>
+                <span>Ask Question</span>
+            </button>
+            <button class="mode-btn" id="btn-summarise" onclick="setMode('summarise')">
+                <span class="mode-icon">📄</span>
+                <span>Summarise</span>
+            </button>
+        </div>
+
+        <!-- Document Filter -->
+        <div class="sidebar-section">
+            <div class="section-label">Document Filter</div>
+            <select class="doc-filter" id="doc-filter">
+                <option value="all">All Documents</option>
+                <optgroup label="Annual Reports">
+                    <option value="annual_report">Annual Reports</option>
+                </optgroup>
+                <optgroup label="Sustainability">
+                    <option value="sustainability_report">Sustainability Reports</option>
+                </optgroup>
+                <optgroup label="Presentations">
+                    <option value="capital_markets">Capital Markets</option>
+                    <option value="management_presentation">Management Presentations</option>
+                </optgroup>
+                <optgroup label="Whitepapers">
+                    <option value="whitepaper">Whitepapers</option>
+                </optgroup>
+            </select>
+        </div>
+
+        <!-- Conversation History -->
+        <div class="sidebar-section conversations-section">
+            <div class="section-label">
+                <span>Recent</span>
+                <button class="new-chat-btn" onclick="newConversation()">+ New</button>
+            </div>
+            <div class="conversations-list" id="conversations-list">
+                <!-- Populated by JS -->
+            </div>
+        </div>
+
+        <!-- Tech Stack -->
+        <div class="tech-stack">
+            <div class="tech-badge">LangGraph</div>
+            <div class="tech-badge">Qdrant</div>
+            <div class="tech-badge">Groq Llama-3</div>
+            <div class="tech-badge">RAGAS</div>
+        </div>
+
+    </aside>
+
+    <!-- ── CENTER CHAT ───────────────────────────────────────── -->
+    <main class="chat-area">
+
+        <!-- Welcome Screen -->
+        <div class="welcome-screen" id="welcome-screen">
+            <div class="welcome-content">
+                <div class="welcome-icon">🏥</div>
+                <h1 class="welcome-title">Medical R&D Intelligence</h1>
+                <p class="welcome-subtitle">Ask questions about Siemens Healthineers R&D documents — Annual Reports, Sustainability Reports, and Technical Whitepapers</p>
+                <div class="sample-questions">
+                    <button class="sample-btn" onclick="sendSample('What was Siemens Healthineers revenue in fiscal year 2023?')">
+                        <span class="sample-icon">💰</span>
+                        <span>What was revenue in fiscal year 2023?</span>
+                    </button>
+                    <button class="sample-btn" onclick="sendSample('What are the R&D investments and innovation priorities?')">
+                        <span class="sample-icon">🔬</span>
+                        <span>What are the R&D investments and priorities?</span>
+                    </button>
+                    <button class="sample-btn" onclick="sendSample('What are the sustainability goals for 2025?')">
+                        <span class="sample-icon">🌱</span>
+                        <span>What are sustainability goals for 2025?</span>
+                    </button>
+                    <button class="sample-btn" onclick="sendSample('Summarise the 2023 Annual Report')">
+                        <span class="sample-icon">📄</span>
+                        <span>Summarise the 2023 Annual Report</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Messages -->
+        <div class="messages-container" id="messages-container">
+            <!-- Populated by JS -->
+        </div>
+
+        <!-- Typing Indicator -->
+        <div class="typing-indicator hidden" id="typing-indicator">
+            <div class="typing-dots">
+                <span></span><span></span><span></span>
+            </div>
+            <span class="typing-text" id="typing-text">Analysing your question...</span>
+        </div>
+
+        <!-- Input Area -->
+        <div class="input-area">
+            <div class="input-wrapper">
+                <textarea
+                    id="query-input"
+                    placeholder="Ask about Siemens Healthineers R&D documents..."
+                    rows="1"
+                    onkeydown="handleKeyDown(event)"
+                    oninput="autoResize(this)"
+                ></textarea>
+                <button class="send-btn" id="send-btn" onclick="sendQuery()">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="22" y1="2" x2="11" y2="13"></line>
+                        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                    </svg>
+                </button>
+            </div>
+            <div class="input-hint">Enter to send · Shift+Enter for new line</div>
+        </div>
+
+    </main>
+
+    <!-- ── RIGHT DETAILS PANEL ───────────────────────────────── -->
+    <aside class="details-panel" id="details-panel">
+
+        <div class="details-header">Pipeline Details</div>
+
+        <!-- Pipeline Stats -->
+        <div class="details-section" id="pipeline-stats" style="display:none">
+            <div class="details-label">Pipeline Stats</div>
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <div class="stat-value" id="stat-route">—</div>
+                    <div class="stat-label">Route</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="stat-retrieved">—</div>
+                    <div class="stat-label">Retrieved</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="stat-reranked">—</div>
+                    <div class="stat-label">Reranked</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Query Rewrite -->
+        <div class="details-section" id="rewrite-section" style="display:none">
+            <div class="details-label">Query Optimised As</div>
+            <div class="rewrite-text" id="rewrite-text"></div>
+        </div>
+
+        <!-- Sources -->
+        <div class="details-section" id="sources-section" style="display:none">
+            <div class="details-label">Sources</div>
+            <div class="sources-list" id="sources-list"></div>
+        </div>
+
+        <!-- Follow-ups -->
+        <div class="details-section" id="followups-section" style="display:none">
+            <div class="details-label">Suggested Follow-ups</div>
+            <div style="font-size:11px;color:#5D7A82;margin-bottom:6px;font-style:italic;">Answers may not always be available in documents</div>
+            <div class="followups-list" id="followups-list"></div>
+        </div>
+
+        <!-- Empty state -->
+        <div class="details-empty" id="details-empty">
+            <div class="details-empty-icon">⚡</div>
+            <div class="details-empty-text">Pipeline details will appear here after your first query</div>
+        </div>
+
+    </aside>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

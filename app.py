@@ -5,15 +5,17 @@ Exposes modular endpoints for internal pipeline integration
 and workflow testing — exactly as used at Siemens Healthineers.
 
 Endpoints:
-- GET  /health    — service health check
-- POST /search    — RAG question answering
+- GET  /         — serves main UI
+- GET  /health   — service health check
+- POST /search   — RAG question answering
 - POST /summarise — document summarisation
-
 """
 
 import logging
 import time
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
@@ -38,11 +40,14 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# ── Static files and templates ───────────────────────────────────────────────
+app.mount("/static", StaticFiles(directory="static"), name="static")
+templates = Jinja2Templates(directory="templates")
+
 # ── CORS middleware ──────────────────────────────────────────────────────────
-# Allows frontend UI to call these endpoints
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # restrict in production
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -82,11 +87,22 @@ class HealthResponse(BaseModel):
 
 # ── Endpoints ────────────────────────────────────────────────────────────────
 
+@app.get("/")
+async def root(request: Request):
+    """Serves the main UI."""
+    return templates.TemplateResponse(
+        request=request,
+        name="index.html"
+    )
+
+
 @app.get("/health", response_model=HealthResponse)
 def health_check():
     """
     Service health check endpoint.
     Called every 30 seconds by monitoring tools.
+    At Siemens — Azure Monitor checked this endpoint.
+    Alert triggered if no response within 10 seconds.
     """
     return HealthResponse(
         status="healthy",
@@ -101,6 +117,9 @@ def search(request: SearchRequest):
     RAG question answering endpoint.
     Runs full LangGraph pipeline — guardrail, routing,
     query understanding, retrieval, reranking, generation.
+
+    At Siemens this endpoint was called by the researcher UI
+    for specific questions about R&D documents.
     """
     if not request.query or len(request.query.strip()) == 0:
         raise HTTPException(
@@ -152,6 +171,9 @@ def summarise(request: SummariseRequest):
     """
     Document summarisation endpoint.
     Runs map-reduce summarisation on specified document.
+
+    At Siemens this endpoint was called when researchers
+    needed quick overview of a new R&D report.
     """
     if not request.query or len(request.query.strip()) == 0:
         raise HTTPException(
