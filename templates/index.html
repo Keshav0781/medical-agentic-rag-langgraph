@@ -22,47 +22,15 @@
             </div>
         </div>
 
-        <!-- Mode Toggle -->
-        <div class="mode-toggle">
-            <button class="mode-btn active" id="btn-search" onclick="setMode('search')">
-                <span class="mode-icon">🔍</span>
-                <span>Ask Question</span>
-            </button>
-            <button class="mode-btn" id="btn-summarise" onclick="setMode('summarise')">
-                <span class="mode-icon">📄</span>
-                <span>Summarise</span>
-            </button>
-        </div>
-
-        <!-- Document Filter -->
-        <div class="sidebar-section">
-            <div class="section-label">Document Filter</div>
-            <select class="doc-filter" id="doc-filter">
-                <option value="all">All Documents</option>
-                <optgroup label="Annual Reports">
-                    <option value="annual_report">Annual Reports</option>
-                </optgroup>
-                <optgroup label="Sustainability">
-                    <option value="sustainability_report">Sustainability Reports</option>
-                </optgroup>
-                <optgroup label="Presentations">
-                    <option value="capital_markets">Capital Markets</option>
-                    <option value="management_presentation">Management Presentations</option>
-                </optgroup>
-                <optgroup label="Whitepapers">
-                    <option value="whitepaper">Whitepapers</option>
-                </optgroup>
-            </select>
-        </div>
+        <!-- New Conversation -->
+        <button class="new-chat-btn" onclick="newConversation()">
+            + New Conversation
+        </button>
 
         <!-- Conversation History -->
         <div class="sidebar-section conversations-section">
-            <div class="section-label">
-                <span>Recent</span>
-                <button class="new-chat-btn" onclick="newConversation()">+ New</button>
-            </div>
+            <div class="section-label">Recent</div>
             <div class="conversations-list" id="conversations-list">
-                <!-- Populated by JS -->
             </div>
         </div>
 
@@ -72,6 +40,7 @@
             <div class="tech-badge">Qdrant</div>
             <div class="tech-badge">Groq Llama-3</div>
             <div class="tech-badge">RAGAS</div>
+            <div class="tech-badge">GCP Cloud Run</div>
         </div>
 
     </aside>
@@ -90,13 +59,13 @@
                         <span class="sample-icon">💰</span>
                         <span>What was revenue in fiscal year 2023?</span>
                     </button>
-                    <button class="sample-btn" onclick="sendSample('What are the R&D investments and innovation priorities?')">
+                    <button class="sample-btn" onclick="sendSample('What were the R&D expenses for Siemens Healthineers in fiscal year 2023?')">
                         <span class="sample-icon">🔬</span>
-                        <span>What are the R&D investments and priorities?</span>
+                        <span>What were the R&D expenses in 2023?</span>
                     </button>
-                    <button class="sample-btn" onclick="sendSample('What are the sustainability goals for 2025?')">
-                        <span class="sample-icon">🌱</span>
-                        <span>What are sustainability goals for 2025?</span>
+                    <button class="sample-btn" onclick="sendSample('What was the comparable revenue growth of the Imaging segment in fiscal year 2023?')">
+                        <span class="sample-icon">📈</span>
+                        <span>What was Imaging segment revenue growth?</span>
                     </button>
                     <button class="sample-btn" onclick="sendSample('Summarise the 2023 Annual Report')">
                         <span class="sample-icon">📄</span>
@@ -107,8 +76,7 @@
         </div>
 
         <!-- Messages -->
-        <div class="messages-container" id="messages-container">
-            <!-- Populated by JS -->
+        <div class="messages-container" id="messages-container" style="display:none">
         </div>
 
         <!-- Typing Indicator -->
@@ -140,57 +108,6 @@
         </div>
 
     </main>
-
-    <!-- ── RIGHT DETAILS PANEL ───────────────────────────────── -->
-    <aside class="details-panel" id="details-panel">
-
-        <div class="details-header">Pipeline Details</div>
-
-        <!-- Pipeline Stats -->
-        <div class="details-section" id="pipeline-stats" style="display:none">
-            <div class="details-label">Pipeline Stats</div>
-            <div class="stats-grid">
-                <div class="stat-item">
-                    <div class="stat-value" id="stat-route">—</div>
-                    <div class="stat-label">Route</div>
-                </div>
-                <div class="stat-item">
-                    <div class="stat-value" id="stat-retrieved">—</div>
-                    <div class="stat-label">Retrieved</div>
-                </div>
-                <div class="stat-item">
-                    <div class="stat-value" id="stat-reranked">—</div>
-                    <div class="stat-label">Reranked</div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Query Rewrite -->
-        <div class="details-section" id="rewrite-section" style="display:none">
-            <div class="details-label">Query Optimised As</div>
-            <div class="rewrite-text" id="rewrite-text"></div>
-        </div>
-
-        <!-- Sources -->
-        <div class="details-section" id="sources-section" style="display:none">
-            <div class="details-label">Sources</div>
-            <div class="sources-list" id="sources-list"></div>
-        </div>
-
-        <!-- Follow-ups -->
-        <div class="details-section" id="followups-section" style="display:none">
-            <div class="details-label">Suggested Follow-ups</div>
-            <div style="font-size:11px;color:#5D7A82;margin-bottom:6px;font-style:italic;">Answers may not always be available in documents</div>
-            <div class="followups-list" id="followups-list"></div>
-        </div>
-
-        <!-- Empty state -->
-        <div class="details-empty" id="details-empty">
-            <div class="details-empty-icon">⚡</div>
-            <div class="details-empty-text">Pipeline details will appear here after your first query</div>
-        </div>
-
-    </aside>
 
     <script src="/static/js/app.js"></script>
 </body>

@@ -1,4 +1,4 @@
-# Environment variables - NEVER commit real keys
+# Environment variables
 .env
 
 # Python
