@@ -195,21 +195,20 @@ def router_node(state: AgentState) -> dict:
     messages = [
         SystemMessage(content="""
 You are a query router for a document search system.
-
 Classify the query into exactly one category:
-
-RAG: User wants a specific answer to a specific question.
+RAG: User wants a specific answer or more information about a topic.
 Examples:
 - What was revenue in 2023?
 - How many employees does Siemens have?
 - What are the R&D investments?
-
-SUMMARY: User wants an overview or summary of a document.
+- Can you provide more information about X?
+- Tell me about X?
+SUMMARY: User explicitly asks to summarise or get an overview of a document.
 Examples:
 - Summarise the annual report
-- Give me an overview of sustainability initiatives
-- What are the key findings from the 2023 report?
-
+- Give me an overview of the 2023 report
+IMPORTANT: Only classify as SUMMARY when user explicitly says
+"summarise", "summary", or "overview". Everything else is RAG.
 Respond with ONLY: RAG or SUMMARY
         """),
         HumanMessage(content=f"Query: {query}")
